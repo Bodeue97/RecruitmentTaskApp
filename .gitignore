@@ -1,0 +1,45 @@
+.vs/
+
+# Build directories
+bin/
+obj/
+
+# Visual Studio / Rider / VS Code files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ASP.NET / MVC / Blazor
+wwwroot/
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# DotCover / ReSharper
+*.dotCover
+_ReSharper*/
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# OS files
+.DS_Store
+Thumbs.db

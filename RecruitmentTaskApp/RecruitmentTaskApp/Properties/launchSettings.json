@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "RecruitmentTaskApp": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
