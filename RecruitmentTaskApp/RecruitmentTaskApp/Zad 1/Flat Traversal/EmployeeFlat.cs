@@ -6,12 +6,12 @@ using System.Threading.Tasks;
 
 namespace RecruitmentTaskApp.Flat_Traversal
 {
-    public class Employee
+    public class EmployeeFlat
     {
         public int Id { get; set; }
         public String Name { get; set; } = String.Empty;
         public int? SuperiorId { get; set; }
-        public virtual Employee? Superior { get; set; }
+        public virtual EmployeeFlat? Superior { get; set; }
 
 
     }

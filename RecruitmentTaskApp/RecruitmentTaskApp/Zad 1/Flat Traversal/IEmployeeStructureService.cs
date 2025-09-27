@@ -9,6 +9,6 @@ namespace RecruitmentTaskApp.Flat_Traversal
     public interface IEmployeesStructureService
     {
         int? GetSuperiorRowOfEmployee(int employeeId, int superiorId);
-        void RebuildStructure(List<Employee> employees);
+        void RebuildStructure(List<EmployeeFlat> employees);
     }
 }

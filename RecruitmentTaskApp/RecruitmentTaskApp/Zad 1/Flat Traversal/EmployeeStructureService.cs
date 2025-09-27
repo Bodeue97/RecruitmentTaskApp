@@ -13,12 +13,12 @@ namespace RecruitmentTaskApp.Flat_Traversal
     {
         private readonly List<EmployeeStructure> _relations = new();
 
-        public EmployeesStructureService(List<Employee> employees)
+        public EmployeesStructureService(List<EmployeeFlat> employees)
         {
             BuildStructure(employees);
         }
 
-        private void BuildStructure(List<Employee> employees)
+        private void BuildStructure(List<EmployeeFlat> employees)
         {
             _relations.Clear();
 
@@ -58,7 +58,7 @@ namespace RecruitmentTaskApp.Flat_Traversal
             return rel?.Level;
         }
 
-        public void RebuildStructure(List<Employee> employees)
+        public void RebuildStructure(List<EmployeeFlat> employees)
         {
             BuildStructure(employees);
         }
