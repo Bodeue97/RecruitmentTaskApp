@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="RecruitmentTaskApp.Tests/RecruitmentTaskApp.Tests.csproj" Id="397f35a5-c28e-4142-855d-fb49f84815b2" />
   <Project Path="RecruitmentTaskApp/RecruitmentTaskApp.csproj" />
 </Solution>

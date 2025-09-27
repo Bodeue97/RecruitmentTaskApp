@@ -10,7 +10,7 @@ namespace RecruitmentTaskApp.Database
     {
         public static void Seed(DbContext context)
         {
-
+            // Clear existing data
             context.Set<Vacation>().RemoveRange(context.Set<Vacation>());
             context.Set<Employee>().RemoveRange(context.Set<Employee>());
             context.Set<Team>().RemoveRange(context.Set<Team>());
@@ -26,6 +26,7 @@ namespace RecruitmentTaskApp.Database
                 context.Database.ExecuteSqlRaw("DBCC CHECKIDENT ('VacationPackages', RESEED, 0)");
             }
 
+            // Create teams
             var teams = new List<Team>
             {
                 new Team { Name = ".NET" },
@@ -35,7 +36,7 @@ namespace RecruitmentTaskApp.Database
             };
             context.Set<Team>().AddRange(teams);
 
-
+            // Create vacation packages
             var vacationPackages = new List<VacationPackage>
             {
                 new VacationPackage { Name = "Standard 2025", GrantedDays = 20, Year = 2025 },
@@ -48,7 +49,7 @@ namespace RecruitmentTaskApp.Database
             var random = new Random();
             var employees = new List<Employee>();
 
-
+            // Create employees
             foreach (var team in teams)
             {
                 for (int i = 0; i < 5; i++)
@@ -67,13 +68,16 @@ namespace RecruitmentTaskApp.Database
             context.Set<Employee>().AddRange(employees);
             context.SaveChanges();
 
+            // Fix: use TeamId instead of Team navigation property
+            var netTeamId = teams.First(t => t.Name == ".NET").Id;
+            var otherTeamId = teams.First(t => t.Name != ".NET").Id;
 
-            var netEmployee2019 = employees.First(e => e.Team.Name == ".NET");
-
-            var pastVacationEmployee = employees.First(e => e.Team.Name != ".NET");
+            var netEmployee2019 = employees.First(e => e.TeamId == netTeamId);
+            var pastVacationEmployee = employees.First(e => e.TeamId == otherTeamId);
 
             var teamWithout2019 = teams.First(t => t.Name == "QA");
 
+            // Generate random vacations for employees
             var vacations = new List<Vacation>();
             foreach (var emp in employees)
             {
@@ -99,7 +103,7 @@ namespace RecruitmentTaskApp.Database
                 }
             }
 
-
+            // Ensure specific vacations exist
             vacations.Add(new Vacation
             {
                 EmployeeId = netEmployee2019.Id,

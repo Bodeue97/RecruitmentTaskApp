@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace RecruitmentTaskApp.Zad_3
 {
-    internal class EmployeeService : IEmployeeService
+    public class EmployeeService : IEmployeeService
     {
         public int CountFreeDaysForEmployee(Employee employee, List<Vacation> vacations, VacationPackage vacationPackage)
         {
