@@ -1,7 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using RecruitmentTaskApp.Database;
-using RecruitmentTaskApp.DTO;
+using RecruitmentTaskApp.Entity;
+using RecruitmentTaskApp.Zad_3;
+using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext;
 
 
 //Zad 1. 
@@ -101,63 +103,63 @@ using RecruitmentTaskApp.DTO;
 
 #region Kod LINQ queries dla in-memory db
 
-using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-    .UseInMemoryDatabase("RecruitmentDb")
-    .Options);
+//using var context = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+//    .UseInMemoryDatabase("RecruitmentDb")
+//    .Options);
 
 
-DbSeeder.Seed(context);
+//DbSeeder.Seed(context);
 
 
-var employeesNet2019 = context.Employees.Where(e => e.Team != null
-                        && e.Team.Name == ".NET"
-                        && e.Vacations
-                        .Any(v => v.DateSince.Year == 2019 || v.DateUntil.Year == 2019))
-                        .OrderBy(e => e.Id)
-                        .ToList();
+//var employeesNet2019 = context.Employees.Where(e => e.Team != null
+//                        && e.Team.Name == ".NET"
+//                        && e.Vacations
+//                        .Any(v => v.DateSince.Year == 2019 || v.DateUntil.Year == 2019))
+//                        .OrderBy(e => e.Id)
+//                        .ToList();
 
-var currentYear = DateTime.Now.Year;
-var employeesCurrentYearUsedVacation = context.Employees
-    .Select(e => new
-    {
-        Employee = e,
-        UsedDays = e.Vacations != null
-            ? e.Vacations
-                .Where(v => v.DateSince.Year < currentYear)
-                .Sum(v => (v.DateUntil - v.DateSince).TotalDays + 1)
-            : 0
-    })
-    .Where(v => v.UsedDays > 0)
-    .OrderBy(e => e.Employee.Id)
-    .ToList();
-
-
-
-var teamsNo2019Vacation = context.Teams
-    .Where(t => t.Employees != null &&
-                t.Employees.All(e => e.Vacations == null
-                || e.Vacations.All(v => v.DateSince.Year != 2019 && v.DateUntil.Year != 2019)))
-                .OrderBy(e => e.Id)
-                .ToList();
+//var currentYear = DateTime.Now.Year;
+//var employeesCurrentYearUsedVacation = context.Employees
+//    .Select(e => new
+//    {
+//        Employee = e,
+//        UsedDays = e.Vacations != null
+//            ? e.Vacations
+//                .Where(v => v.DateSince.Year < currentYear)
+//                .Sum(v => (v.DateUntil - v.DateSince).TotalDays + 1)
+//            : 0
+//    })
+//    .Where(v => v.UsedDays > 0)
+//    .OrderBy(e => e.Employee.Id)
+//    .ToList();
 
 
-Console.WriteLine("Employees in .NET team with vacation used in 2019 (LINQ):");
-foreach (var e in employeesNet2019)
-{
-    Console.WriteLine($"Id: {e.Id}, Name: {e.Name}");
-}
 
-Console.WriteLine("\nEmployees that used vacation days in current year (LINQ):");
-foreach (var e in employeesCurrentYearUsedVacation)
-{
-    Console.WriteLine($"Id: {e.Employee.Id}, Name: {e.Employee.Name}, UsedDays: {e.UsedDays}");
-}
+//var teamsNo2019Vacation = context.Teams
+//    .Where(t => t.Employees != null &&
+//                t.Employees.All(e => e.Vacations == null
+//                || e.Vacations.All(v => v.DateSince.Year != 2019 && v.DateUntil.Year != 2019)))
+//                .OrderBy(e => e.Id)
+//                .ToList();
 
-Console.WriteLine("\nTeams with no vacation used in 2019 (LINQ):");
-foreach (var t in teamsNo2019Vacation)
-{
-    Console.WriteLine($"Id: {t.Id}, Name: {t.Name}");
-}
+
+//Console.WriteLine("Employees in .NET team with vacation used in 2019 (LINQ):");
+//foreach (var e in employeesNet2019)
+//{
+//    Console.WriteLine($"Id: {e.Id}, Name: {e.Name}");
+//}
+
+//Console.WriteLine("\nEmployees that used vacation days in current year (LINQ):");
+//foreach (var e in employeesCurrentYearUsedVacation)
+//{
+//    Console.WriteLine($"Id: {e.Employee.Id}, Name: {e.Employee.Name}, UsedDays: {e.UsedDays}");
+//}
+
+//Console.WriteLine("\nTeams with no vacation used in 2019 (LINQ):");
+//foreach (var t in teamsNo2019Vacation)
+//{
+//    Console.WriteLine($"Id: {t.Id}, Name: {t.Name}");
+//}
 
 #endregion
 
@@ -260,6 +262,90 @@ foreach (var t in teamsNo2019Vacation)
 
 #endregion
 
+//Zad 3 oraz 4 w odpowiednim folderze
+
+//Zad 5 jest w osobnym projekcie testowym
+
+//Zad 6.
+
+// Tutaj zaprezentuje 6 sposobow na optymalizacje pobierania danych z bazy
+
+
+#region Context, seeding i service do zad 6.
+
+IEmployeeService _es = new EmployeeService();
+
+
+using var contextLinq = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+    .UseInMemoryDatabase("RecruitmentDb")
+    .Options);
+
+
+DbSeeder.Seed(contextLinq);
+var currentYear = DateTime.Now.Year;
+
+
+
+Console.WriteLine("Database seeded with sample data!");
+#endregion
+
+// I. pobieranie jedynie niezbednych pol z potrzebnych tabel
+
+#region Tylko potrzebne pola kod
+////nieoptymalne query
+//var employeeLinqNonOpt = contextLinq.Employees
+//    .Include(e => e.Team)
+//    .Include(e => e.Vacations)
+//    .Include(e => e.VacationPackage)
+//    .ToList();
+
+
+
+////optymalne query
+
+//var employeeLinqOpt = contextLinq.Employees
+//    .Select(e => new
+//    {
+//        Employee = new Employee { Id = e.Id },
+//        Vacations = e.Vacations
+//            .Select(v => new Vacation
+//            {
+//                EmployeeId = v.EmployeeId,   
+//                DateSince = v.DateSince,
+//                DateUntil = v.DateUntil
+//            })
+//            .ToList(),
+//        VacationPackage = e.VacationPackage == null ? null : new VacationPackage
+//        {
+//            GrantedDays = e.VacationPackage.GrantedDays,
+//            Year = e.VacationPackage.Year
+//        }
+//    })
+//    .ToList();
+
+
+//foreach (var e in employeeLinqOpt)
+//{
+//    Console.WriteLine(_es.CountFreeDaysForEmployee(e.Employee, e!.Vacations, e.VacationPackage));
+//}
+
+#endregion
+
+
+// II. agregowanie danych po stronie bazy - tuta
+
+var employeeVacationAggregates = contextLinq.Employees
+    .Where(e => e.Id == 1)
+    .Select(e => new
+    {
+        GrantedDays = e.VacationPackage != null && e.VacationPackage.Year == currentYear
+            ? e.VacationPackage.GrantedDays
+            : 0,
+        UsedDays = e.Vacations
+            .Where(v => v.DateSince.Year <= currentYear && v.DateUntil.Year >= currentYear)
+            .Sum(v => /* calculation */)
+    })
+    .ToList();
 
 
 

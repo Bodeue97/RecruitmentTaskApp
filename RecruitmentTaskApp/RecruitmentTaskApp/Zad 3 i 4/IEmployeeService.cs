@@ -11,6 +11,7 @@ namespace RecruitmentTaskApp.Zad_3
     {
         public int CountFreeDaysForEmployee(Employee employee, List<Vacation> vacations, VacationPackage vacationPackage);
         public bool IfEmployeeCanRequestVacation(Employee employee, List<Vacation> vacations, VacationPackage vacationPackage);
+        public int CalculateFreeDaysFromAggregate(int grantedDays, int usedDays);
 
     }
 }

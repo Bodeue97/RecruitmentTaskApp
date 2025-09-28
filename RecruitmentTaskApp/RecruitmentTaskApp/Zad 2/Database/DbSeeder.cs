@@ -10,21 +10,24 @@ namespace RecruitmentTaskApp.Database
     {
         public static void Seed(DbContext context)
         {
-            // Clear existing data
+            // Clear tables
             context.Set<Vacation>().RemoveRange(context.Set<Vacation>());
             context.Set<Employee>().RemoveRange(context.Set<Employee>());
             context.Set<Team>().RemoveRange(context.Set<Team>());
             context.Set<VacationPackage>().RemoveRange(context.Set<VacationPackage>());
             context.SaveChanges();
 
-            var provider = context.Database.ProviderName;
-            if (provider == "Microsoft.EntityFrameworkCore.SqlServer")
+            // Reset identity for SQL Server
+            if (context.Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer")
             {
                 context.Database.ExecuteSqlRaw("DBCC CHECKIDENT ('Vacations', RESEED, 0)");
                 context.Database.ExecuteSqlRaw("DBCC CHECKIDENT ('Employees', RESEED, 0)");
                 context.Database.ExecuteSqlRaw("DBCC CHECKIDENT ('Teams', RESEED, 0)");
                 context.Database.ExecuteSqlRaw("DBCC CHECKIDENT ('VacationPackages', RESEED, 0)");
             }
+
+            var random = new Random();
+            var currentYear = DateTime.Now.Year;
 
             // Create teams
             var teams = new List<Team>
@@ -46,10 +49,8 @@ namespace RecruitmentTaskApp.Database
             context.Set<VacationPackage>().AddRange(vacationPackages);
             context.SaveChanges();
 
-            var random = new Random();
-            var employees = new List<Employee>();
-
             // Create employees
+            var employees = new List<Employee>();
             foreach (var team in teams)
             {
                 for (int i = 0; i < 5; i++)
@@ -68,29 +69,29 @@ namespace RecruitmentTaskApp.Database
             context.Set<Employee>().AddRange(employees);
             context.SaveChanges();
 
-            // Fix: use TeamId instead of Team navigation property
-            var netTeamId = teams.First(t => t.Name == ".NET").Id;
-            var otherTeamId = teams.First(t => t.Name != ".NET").Id;
+            // Ensure at least 2 employees have 2025 package
+            var package2025 = vacationPackages.First(vp => vp.Year == currentYear);
+            employees[0].VacationPackageId = package2025.Id;
+            employees[1].VacationPackageId = package2025.Id;
+            context.SaveChanges();
 
-            var netEmployee2019 = employees.First(e => e.TeamId == netTeamId);
-            var pastVacationEmployee = employees.First(e => e.TeamId == otherTeamId);
-
-            var teamWithout2019 = teams.First(t => t.Name == "QA");
-
-            // Generate random vacations for employees
+            // Generate vacations
             var vacations = new List<Vacation>();
+
             foreach (var emp in employees)
             {
                 int vacationCount = random.Next(0, 3);
                 for (int j = 0; j < vacationCount; j++)
                 {
                     var year = random.Next(2019, 2026);
-
-                    if (emp.TeamId == teamWithout2019.Id && year == 2019) year = 2020;
-
                     var startMonth = random.Next(1, 12);
                     var startDay = random.Next(1, 25);
                     var lengthDays = random.Next(1, 5);
+
+                    // Ensure valid DateUntil
+                    int daysInMonth = DateTime.DaysInMonth(year, startMonth);
+                    if (startDay + lengthDays - 1 > daysInMonth)
+                        lengthDays = daysInMonth - startDay + 1;
 
                     vacations.Add(new Vacation
                     {
@@ -103,21 +104,21 @@ namespace RecruitmentTaskApp.Database
                 }
             }
 
-            // Ensure specific vacations exist
+            // Add guaranteed current-year vacations for testing
             vacations.Add(new Vacation
             {
-                EmployeeId = netEmployee2019.Id,
-                DateSince = new DateTime(2019, 6, 1),
-                DateUntil = new DateTime(2019, 6, 5),
-                NumberOfHours = 5 * 8,
+                EmployeeId = employees[0].Id,
+                DateSince = new DateTime(currentYear, 1, 5),
+                DateUntil = new DateTime(currentYear, 1, 10),
+                NumberOfHours = 6 * 8,
                 IsPartialVacation = false
             });
 
             vacations.Add(new Vacation
             {
-                EmployeeId = pastVacationEmployee.Id,
-                DateSince = new DateTime(DateTime.Now.Year - 1, 7, 1),
-                DateUntil = new DateTime(DateTime.Now.Year - 1, 7, 3),
+                EmployeeId = employees[1].Id,
+                DateSince = new DateTime(currentYear, 2, 1),
+                DateUntil = new DateTime(currentYear, 2, 3),
                 NumberOfHours = 3 * 8,
                 IsPartialVacation = false
             });
