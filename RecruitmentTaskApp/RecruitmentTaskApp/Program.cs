@@ -1,9 +1,9 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using RecruitmentTaskApp.Database;
 using RecruitmentTaskApp.Entity;
 using RecruitmentTaskApp.Zad_3;
-using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext;
 
 
 //Zad 1. 
@@ -273,16 +273,40 @@ using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext
 
 #region Context, seeding i service do zad 6.
 
-IEmployeeService _es = new EmployeeService();
+var memoryCache = new MemoryCache(new MemoryCacheOptions());
+IEmployeeService _es = new EmployeeService(memoryCache);
 
 
 using var contextLinq = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
     .UseInMemoryDatabase("RecruitmentDb")
     .Options);
 
+var config = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddEnvironmentVariables()
+    .Build();
+
+
+var connectionString = config.GetConnectionString("RecruitmentDb");
+
+using var contextSql = new AppDbContext(
+    new DbContextOptionsBuilder<AppDbContext>()
+        .UseSqlServer(connectionString)
+        .Options
+);
+
+contextSql.Database.EnsureCreated();
+
+
+
+DbSeeder.Seed(contextSql);
+
 
 DbSeeder.Seed(contextLinq);
 var currentYear = DateTime.Now.Year;
+var startOfYear = new DateTime(currentYear, 1, 1);
+var endOfYear = new DateTime(currentYear, 12, 31);
 
 
 
@@ -292,60 +316,162 @@ Console.WriteLine("Database seeded with sample data!");
 // I. pobieranie jedynie niezbednych pol z potrzebnych tabel
 
 #region Tylko potrzebne pola kod
-////nieoptymalne query
-//var employeeLinqNonOpt = contextLinq.Employees
-//    .Include(e => e.Team)
-//    .Include(e => e.Vacations)
-//    .Include(e => e.VacationPackage)
-//    .ToList();
+//nieoptymalne query
+var employeeLinqNonOpt = contextLinq.Employees
+    .Include(e => e.Team)
+    .Include(e => e.Vacations)
+    .Include(e => e.VacationPackage)
+    .ToList();
 
 
 
-////optymalne query
+//optymalne query
 
-//var employeeLinqOpt = contextLinq.Employees
-//    .Select(e => new
-//    {
-//        Employee = new Employee { Id = e.Id },
-//        Vacations = e.Vacations
-//            .Select(v => new Vacation
-//            {
-//                EmployeeId = v.EmployeeId,   
-//                DateSince = v.DateSince,
-//                DateUntil = v.DateUntil
-//            })
-//            .ToList(),
-//        VacationPackage = e.VacationPackage == null ? null : new VacationPackage
-//        {
-//            GrantedDays = e.VacationPackage.GrantedDays,
-//            Year = e.VacationPackage.Year
-//        }
-//    })
-//    .ToList();
+var employeeLinqOpt = contextLinq.Employees
+    .Select(e => new
+    {
+        Employee = new Employee { Id = e.Id },
+        Vacations = e.Vacations
+            .Select(v => new Vacation
+            {
+                EmployeeId = v.EmployeeId,
+                DateSince = v.DateSince,
+                DateUntil = v.DateUntil
+            })
+            .ToList(),
+        VacationPackage = e.VacationPackage == null ? null : new VacationPackage
+        {
+            GrantedDays = e.VacationPackage.GrantedDays,
+            Year = e.VacationPackage.Year
+        }
+    })
+    .ToList();
 
 
-//foreach (var e in employeeLinqOpt)
-//{
-//    Console.WriteLine(_es.CountFreeDaysForEmployee(e.Employee, e!.Vacations, e.VacationPackage));
-//}
+foreach (var e in employeeLinqOpt)
+{
+    Console.WriteLine(_es.CountFreeDaysForEmployee(e.Employee, e!.Vacations, e.VacationPackage!));
+}
 
 #endregion
 
 
-// II. agregowanie danych po stronie bazy - tuta
+// II. agregowanie danych po stronie bazy - tutaj wyliczamy
+// - wszystkie wartosci jeszcze zanim pobierzemy dane z bazy = mniej danych
+// - do pobrania = badziej optymalne zapytanie
 
-var employeeVacationAggregates = contextLinq.Employees
-    .Where(e => e.Id == 1)
+#region Kod agregowanie po stronie bazy
+
+
+var employeeVacationDaysAggregated = contextSql.Employees
     .Select(e => new
     {
-        GrantedDays = e.VacationPackage != null && e.VacationPackage.Year == currentYear
-            ? e.VacationPackage.GrantedDays
-            : 0,
+        EmployeeId = e.Id,
+        GrantedDays = e.VacationPackage != null ? e.VacationPackage.GrantedDays : 0,
+        PackageYear = e.VacationPackage != null ? e.VacationPackage.Year : 0,
         UsedDays = e.Vacations
-            .Where(v => v.DateSince.Year <= currentYear && v.DateUntil.Year >= currentYear)
-            .Sum(v => /* calculation */)
+            .Where(v => v.DateSince <= endOfYear && v.DateUntil >= startOfYear && v.DateUntil < DateTime.Now)
+            .Sum(v =>
+                EF.Functions.DateDiffDay(
+                    v.DateSince < startOfYear ? startOfYear : v.DateSince,
+                    v.DateUntil > endOfYear ? endOfYear : v.DateUntil
+                ) + 1
+            )
     })
     .ToList();
+Console.WriteLine("Aggregated: \n");
+foreach (var e in employeeVacationDaysAggregated)
+{
+    Console.WriteLine(_es.CalculateFreeDaysFromAggregate(e!.GrantedDays, e.UsedDays, e.PackageYear));
+}
+
+
+#endregion
+
+// III. Uzywanie wydajnych joinow w celu ograniczenia czestotliwosci pobierania danych z bazy.
+// - tutaj chodzi mi glownie o to zeby pobrac wszystkie potrzebne dane jednym query.
+// - Przykladowego kodu nie uwzgledniam w tym punkcie, bo w tym przypadku trzeba sie 
+// - naprawde postarac, zeby pobierac rozne dane potrzebne do metody z zad 3 w osobnych 
+// - zapytaniach
+
+
+
+
+// IV. Dodawanie odpowiednich indeksów w celu przyspieszenia filtrowania i joinów.
+// - dla kolumn, po których często filtrujemy lub łączymy tabele, tworzymy indeksy
+// - np. w tabeli Vacations dodajemy indeks na kolumnie EmployeeId
+//      CREATE INDEX IX_Vacations_EmployeeId ON Vacations(EmployeeId);
+// - dzięki temu zapytania typu "WHERE EmployeeId = x" lub joiny z tabelą Employees
+//   nie wymagają pełnego skanowania tabeli, tylko szybkie przejście po strukturze indeksu
+// - w SQL Server indeksy są implementowane jako B+ tree
+//      - każdy węzeł ma uporządkowane klucze i wskaźniki do dzieci lub do rekordów
+//      - pozwala to znaleźć poszukiwany rekord w log(n) porównań zamiast pełnego skanu
+// - indeksy klastrowane sortują fizycznie dane tabeli, a nieklastrowane przechowują wskaźniki
+// - w ten sposób przy dużych tabelach agregacje, joiny i filtrowanie działają znacznie szybciej
+// - Indeksowanie zostalo zaimplementowane w AppDbContext.cs od linii 20.
+
+
+// V. Korzystanie ze stored procedure do obliczania potrzebnych danych po stronie db - w przypadkach gdy
+// - dane liczymy regularnie/wielokrotnie
+
+#region Kod stored procedure przyklad
+
+//var createProcedureSql = @"
+//IF OBJECT_ID('GetEmployeeVacationSummary', 'P') IS NULL
+//BEGIN
+//    EXEC('
+//    CREATE PROCEDURE GetEmployeeVacationSummary
+//        @EmployeeId INT
+//    AS
+//    BEGIN
+//        SELECT 
+//            e.Id AS EmployeeId,
+//            vp.GrantedDays,
+//            vp.Year AS PackageYear,
+//            ISNULL(SUM(DATEDIFF(DAY, v.DateSince, v.DateUntil) + 1), 0) AS UsedDays
+//        FROM Employees e
+//        LEFT JOIN VacationPackages vp ON e.VacationPackageId = vp.Id
+//        LEFT JOIN Vacations v ON v.EmployeeId = e.Id
+//        WHERE e.Id = @EmployeeId
+//        GROUP BY e.Id, vp.GrantedDays, vp.Year;
+//    END
+//    ')
+//END
+//";
+
+//contextSql.Database.ExecuteSqlRaw(createProcedureSql);
+
+//var employeeIdParam = new SqlParameter("@EmployeeId", 1); 
+
+//var summary = contextSql.Set<EmployeeVacationSummary>()
+//    .FromSqlRaw("EXEC GetEmployeeVacationSummary @EmployeeId", employeeIdParam)
+//    .AsEnumerable() 
+//    .FirstOrDefault();
+
+//if (summary != null)
+//{
+//    int freeDays = _es.CalculateFreeDaysFromAggregate(
+//        summary.GrantedDays,
+//        summary.UsedDays,
+//        summary.PackageYear
+//    );
+
+//    Console.WriteLine($"Employee {summary.EmployeeId} has {freeDays} free vacation days.");
+//}
+
+
+#endregion
+
+
+// VI. Korzystanie z in-memory cache do przechowywania czesto pobieranych danych
+// - w celu ograniczenia czestotliwosci odbijania sie od db. Implementacja cache 
+// - w EmployeeService.cs line 54. jesli dni pracownika o danym id byly juz obliczane
+// - w ciagu ostatnich 10min to dane te sa pobierane z cache, nie z bazy. Tutaj pojawia
+// - sie problem gdy dane zostaly zaktualizowane w ciagu ostatnich 10 minut przez co 
+// - istnieje ryzyko zwrocenia blednej ilosci dni, ale mozna tego uniknac uwzgledniajac
+// - update cache przy skladaniu wniosku o urlop, np usuwajac cashed pozostale dni dla tego pracownika.
+
+
 
 
 
